@@ -4,12 +4,11 @@ contract CommunityWallet {
     address owner;
     uint approveThreshold;
 
-    constructor() {
+    constructor(uint _threshold) {
         owner = msg.sender;//because owner is going to be the one who is deploying the contract not user input
-        approveThreshold =3; 
+        approveThreshold = _threshold; 
     } 
 
-    uint256 contractBalance;
     uint256 spendingRequestId;// counter used for both mappings
     mapping(address => uint256) addressToBalance;
     struct SpendingRequest {
@@ -21,6 +20,22 @@ contract CommunityWallet {
     }
     mapping(uint256 => SpendingRequest) IdToRequest;
 
+    event Deposit(address indexed user, uint amount);
+
+    event SpendingRequestCreated(
+        uint indexed requestId,
+        string description,
+        uint amount,
+        address indexed recipient
+    );
+
+    event SpendingRequestApproved(
+        uint indexed requestId,
+        address indexed approver
+    );
+
+    event SpendingRequestExecuted(uint indexed requestId);
+
     modifier onlyOwner {
         require(msg.sender == owner, "User can't access this function");
         _; //is used to define the end of modifier and beginning of function call written next to it
@@ -31,8 +46,9 @@ contract CommunityWallet {
         // because we already have internal variable and they change every time the function is call
         // thats why we dont use owner even though it is assigned as msg.sender in constructor
         require(msg.value != 0, "You have Zero ETH");
-        addressToBalance[msg.sender] += msg.value;
-        contractBalance += msg.value;       
+        addressToBalance[msg.sender] += msg.value; 
+
+        emit Deposit(msg.sender,msg.value);
     }
     
     function createSpendingRequest(string memory _description, uint _amount, address _recipient) public onlyOwner {
@@ -45,6 +61,14 @@ contract CommunityWallet {
             isExecuted: false,
             approvalCount: 0
         });
+
+        emit SpendingRequestCreated(
+            spendingRequestId,
+            _description,
+            _amount,
+            _recipient
+        );
+
         spendingRequestId ++; 
         //dont need to wait for the approval because 
         //we have to assign id at creation thats why increment it here
@@ -58,6 +82,8 @@ contract CommunityWallet {
         require(requestIdToApprovals[_spendingRequestId][msg.sender] == false,"you already approved this tx");
         IdToRequest[_spendingRequestId].approvalCount ++;
         requestIdToApprovals[_spendingRequestId][msg.sender] = true;
+
+        emit SpendingRequestApproved(_spendingRequestId, msg.sender);
     }
 
     function executeSpendingRequest(uint _spendingRequestId) public {
@@ -68,6 +94,8 @@ contract CommunityWallet {
         IdToRequest[_spendingRequestId].isExecuted = true;
         (bool success, ) = IdToRequest[_spendingRequestId].recipient.call{value: IdToRequest[_spendingRequestId].amount}("");
         require(success, "ETH transfer failed");
+
+        emit SpendingRequestExecuted(_spendingRequestId);
     }   
 
 }
